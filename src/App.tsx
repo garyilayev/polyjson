@@ -1,13 +1,25 @@
 import { useState, useRef, useEffect } from "react";
 import toast, { Toaster } from "react-hot-toast";
+import { generateColor, generateId } from "./util";
 
 type Point = { x: number; y: number };
 
 type Polygon = Point[];
+interface PolygonData {
+  id: string;
+  title?: string;
+  shape?: string; // e.g., "poly"
+  name?: string;
+  fillColor: string;
+  strokeColor: string;
+  coords: number[]; // flattened array of coordinates
+  polygon: Polygon; // array of points (converted from array of number pairs)
+  prefillColor: string;
+}
 
 export default function ImagePolygonAnnotator() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [polygons, setPolygons] = useState<Polygon[]>([]);
+  const [polygons, setPolygons] = useState<PolygonData[]>([]);
   const [currentPolygon, setCurrentPolygon] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,14 +61,26 @@ export default function ImagePolygonAnnotator() {
     if (!isDrawing) {
       setIsDrawing(true);
     }
-
     const { x, y } = getCanvasCoordinates(e);
     setCurrentPolygon((prev) => [...prev, { x, y }]);
   };
 
   const completePolygon = () => {
     if (currentPolygon.length >= 3) {
-      setPolygons((prev) => [...prev, currentPolygon]);
+      const newPolygonData: PolygonData = {
+        id: generateId(), // generate a unique id
+        title: "Polygon", // default title (can be updated later)
+        shape: "poly",
+        name: (polygons.length + 1).toString(),
+        fillColor: generateColor(0.2),
+        strokeColor: "black",
+        // Flatten the points into a number array [x1, y1, x2, y2, ...]
+        coords: currentPolygon.flatMap((point) => [point.x, point.y]),
+        polygon: currentPolygon,
+        prefillColor: "red",
+      };
+
+      setPolygons((prev) => [...prev, newPolygonData]);
       setCurrentPolygon([]);
       setIsDrawing(false);
       toast.success("Polygon completed");
@@ -80,8 +104,8 @@ export default function ImagePolygonAnnotator() {
 
   const exportJSON = () => {
     const data = {
-      polygons: polygons,
-      currentPolygon: currentPolygon,
+      polygons,
+      currentPolygon,
     };
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     toast.success("JSON copied to clipboard");
@@ -102,17 +126,20 @@ export default function ImagePolygonAnnotator() {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw completed polygons
-      polygons.forEach((polygon) => {
-        ctx.beginPath();
-        ctx.moveTo(polygon[0].x, polygon[0].y);
-        polygon.forEach((point) => ctx.lineTo(point.x, point.y));
-        ctx.closePath();
-        ctx.strokeStyle = "#3B82F6";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = "rgba(59, 130, 246, 0.2)";
-        ctx.fill();
+      // Draw completed polygons from PolygonData
+      polygons.forEach((polyData) => {
+        const points = polyData.polygon;
+        if (points.length > 0) {
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          points.forEach((point) => ctx.lineTo(point.x, point.y));
+          ctx.closePath();
+          ctx.strokeStyle = polyData.strokeColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = polyData.fillColor;
+          ctx.fill();
+        }
       });
 
       // Draw current polygon
@@ -124,7 +151,7 @@ export default function ImagePolygonAnnotator() {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Draw points
+        // Draw each vertex as a small circle
         currentPolygon.forEach((point) => {
           ctx.beginPath();
           ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
