@@ -146,7 +146,7 @@ export default function ImagePolygonAnnotator() {
     <div className="min-h-screen bg-gray-100 p-8 w-full">
       <Toaster position="top-right" />
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6 space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">
+        <h1 className="text-2xl text-center font-bold text-gray-800">
           Image Polygon Annotator
         </h1>
 
