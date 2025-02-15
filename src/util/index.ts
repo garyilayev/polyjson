@@ -11,6 +11,30 @@ export function generateColor(alpha: number = 1): string {
 }
 
 /**
+ * Darkens an RGBA color by increasing its opacity.
+ * @param {string} rgbaColor - The RGBA color string (e.g., "rgba(123, 45, 67, 0.5)").
+ * @param {number} increase - The amount to increase the alpha (opacity), cannot exceed 1.
+ * @returns {string} The new RGBA color with adjusted opacity.
+ */
+export function darkenColor(rgbaColor: string, increase: number): string {
+  const rgbaRegex = /rgba?\((\d+),\s*(\d+),\s*(\d+),\s*(\d*\.?\d*)\)/;
+  const match = rgbaColor.match(rgbaRegex);
+
+  if (!match) {
+    throw new Error("Invalid RGBA color format");
+  }
+
+  const r = parseInt(match[1], 10);
+  const g = parseInt(match[2], 10);
+  const b = parseInt(match[3], 10);
+  let a = parseFloat(match[4]);
+
+  a = Math.min(a + increase, 1); // Ensure alpha does not exceed 1
+
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+/**
  * Generates a new alphanumeric ID.
  * @param {number} length - The desired length of the ID. Defaults to 8.
  * @returns {string} The generated alphanumeric ID.

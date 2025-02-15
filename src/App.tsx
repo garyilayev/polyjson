@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import toast, { Toaster } from "react-hot-toast";
-import { generateColor, generateId } from "./util";
+import { darkenColor, generateColor, generateId } from "./util";
 
 type Point = { x: number; y: number };
 
@@ -67,13 +67,14 @@ export default function ImagePolygonAnnotator() {
 
   const completePolygon = () => {
     if (currentPolygon.length >= 3) {
+      const fillColor = generateColor(0.2);
       const newPolygonData: PolygonData = {
         id: generateId(), // generate a unique id
         title: "Polygon", // default title (can be updated later)
         shape: "poly",
         name: (polygons.length + 1).toString(),
-        fillColor: generateColor(0.2),
-        strokeColor: "black",
+        fillColor: fillColor,
+        strokeColor: darkenColor(fillColor, 1),
         // Flatten the points into a number array [x1, y1, x2, y2, ...]
         coords: currentPolygon.flatMap((point) => [point.x, point.y]),
         polygon: currentPolygon,
