@@ -7,14 +7,11 @@ type Point = { x: number; y: number };
 type Polygon = Point[];
 interface PolygonData {
   id: string;
-  title?: string;
   shape?: string; // e.g., "poly"
-  name?: string;
   fillColor: string;
   strokeColor: string;
   coords: number[]; // flattened array of coordinates
   polygon: Polygon; // array of points (converted from array of number pairs)
-  prefillColor: string;
 }
 
 export default function ImagePolygonAnnotator() {
@@ -24,6 +21,17 @@ export default function ImagePolygonAnnotator() {
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const formattedPolygons = getFormattedPolygons();
+
+  function getFormattedPolygons() {
+    return polygons.map((polygon) => ({
+      id: polygon.id,
+      shape: polygon.shape,
+      fillColor: polygon.fillColor,
+      strokeColor: polygon.strokeColor,
+      coords: polygon.coords,
+    }));
+  }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -70,15 +78,12 @@ export default function ImagePolygonAnnotator() {
       const fillColor = generateColor(0.2);
       const newPolygonData: PolygonData = {
         id: generateId(), // generate a unique id
-        title: "Polygon", // default title (can be updated later)
         shape: "poly",
-        name: (polygons.length + 1).toString(),
         fillColor: fillColor,
         strokeColor: darkenColor(fillColor, 1),
         // Flatten the points into a number array [x1, y1, x2, y2, ...]
         coords: currentPolygon.flatMap((point) => [point.x, point.y]),
         polygon: currentPolygon,
-        prefillColor: "red",
       };
 
       setPolygons((prev) => [...prev, newPolygonData]);
@@ -252,7 +257,7 @@ export default function ImagePolygonAnnotator() {
                 Current Data
               </h2>
               <pre className="text-sm text-gray-600 overflow-x-auto">
-                {JSON.stringify({ polygons, currentPolygon }, null, 2)}
+                {JSON.stringify({ formattedPolygons, currentPolygon }, null, 2)}
               </pre>
             </div>
           )}
