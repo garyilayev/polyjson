@@ -76,7 +76,7 @@ export default function ImagePolygonAnnotator() {
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = () => {
     if (drawingMode === "line" || !dragShape || !startPoint) return;
 
     const fillColor = generateColor(0.5); // force 0.5 alpha for final polygon
