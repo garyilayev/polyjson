@@ -3,92 +3,147 @@ import toast, { Toaster } from "react-hot-toast";
 import { darkenColor, generateColor, generateId } from "./util";
 
 type Point = { x: number; y: number };
-
 type Polygon = Point[];
+
 interface PolygonData {
   id: string;
-  shape?: string; // e.g., "poly"
+  label?: string;
+  shape?: string;
   fillColor: string;
   strokeColor: string;
-  coords: number[]; // flattened array of coordinates
-  polygon: Polygon; // array of points (converted from array of number pairs)
+  coords: number[];
+  polygon: Polygon;
 }
+
+type DrawingMode = "line" | "rectangle" | "circle";
 
 export default function ImagePolygonAnnotator() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [polygons, setPolygons] = useState<PolygonData[]>([]);
   const [currentPolygon, setCurrentPolygon] = useState<Point[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>("line");
+  const [label, setLabel] = useState<string>("");
+  const [startPoint, setStartPoint] = useState<Point | null>(null);
+  const [dragShape, setDragShape] = useState<Polygon | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const formattedPolygons = getFormattedPolygons();
 
-  function getFormattedPolygons() {
-    return polygons.map((polygon) => ({
-      id: polygon.id,
-      shape: polygon.shape,
-      fillColor: polygon.fillColor,
-      strokeColor: polygon.strokeColor,
-      coords: polygon.coords,
-    }));
-  }
+  const formattedPolygons = polygons.map((polygon) => ({
+    id: polygon.id,
+    label: polygon.label,
+    shape: polygon.shape,
+    fillColor: polygon.fillColor,
+    strokeColor: polygon.strokeColor,
+    coords: polygon.coords,
+  }));
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith("image/")) {
-        toast.error("Please upload an image file");
-        return;
-      }
+    if (file && file.type.startsWith("image/")) {
       const reader = new FileReader();
       reader.onload = (e) => {
         setImageSrc(e.target?.result as string);
         setPolygons([]);
         setCurrentPolygon([]);
-        setIsDrawing(false);
       };
       reader.readAsDataURL(file);
+    } else {
+      toast.error("Please upload an image file");
     }
   };
 
   const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-
     return {
       x: (e.clientX - rect.left) * scaleX,
       y: (e.clientY - rect.top) * scaleY,
     };
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) {
-      setIsDrawing(true);
-    }
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getCanvasCoordinates(e);
-    setCurrentPolygon((prev) => [...prev, { x, y }]);
+
+    if (drawingMode === "line") {
+      setCurrentPolygon((prev) => [...prev, { x, y }]);
+    } else {
+      setStartPoint({ x, y });
+      setDragShape(null); // reset preview
+    }
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (drawingMode === "line" || !dragShape || !startPoint) return;
+
+    const fillColor = generateColor(0.5); // force 0.5 alpha for final polygon
+    const newPoly: PolygonData = {
+      id: generateId(),
+      label,
+      shape: drawingMode,
+      fillColor,
+      strokeColor: darkenColor(fillColor, 1),
+      coords: dragShape.flatMap(({ x, y }) => [x, y]),
+      polygon: dragShape,
+    };
+
+    setPolygons((prev) => [...prev, newPoly]);
+    setDragShape(null);
+    setStartPoint(null);
+    setLabel("");
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!startPoint || drawingMode === "line") return;
+
+    const { x, y } = getCanvasCoordinates(e);
+    const endPoint = { x, y };
+    let shape: Polygon = [];
+
+    if (drawingMode === "rectangle") {
+      shape = [
+        startPoint,
+        { x: endPoint.x, y: startPoint.y },
+        endPoint,
+        { x: startPoint.x, y: endPoint.y },
+      ];
+    } else if (drawingMode === "circle") {
+      const radiusX = (endPoint.x - startPoint.x) / 2;
+      const radiusY = (endPoint.y - startPoint.y) / 2;
+      const centerX = startPoint.x + radiusX;
+      const centerY = startPoint.y + radiusY;
+      const steps = 32;
+      for (let i = 0; i < steps; i++) {
+        const angle = (i / steps) * Math.PI * 2;
+        shape.push({
+          x: centerX + radiusX * Math.cos(angle),
+          y: centerY + radiusY * Math.sin(angle),
+        });
+      }
+    }
+
+    setDragShape(shape); // preview polygon
   };
 
   const completePolygon = () => {
     if (currentPolygon.length >= 3) {
-      const fillColor = generateColor(0.2);
+      const fillColor = generateColor(0.5); // force semi-transparent fill
       const newPolygonData: PolygonData = {
-        id: generateId(), // generate a unique id
+        id: generateId(),
+        label,
         shape: "poly",
-        fillColor: fillColor,
+        fillColor,
         strokeColor: darkenColor(fillColor, 1),
-        // Flatten the points into a number array [x1, y1, x2, y2, ...]
         coords: currentPolygon.flatMap((point) => [point.x, point.y]),
         polygon: currentPolygon,
       };
-
       setPolygons((prev) => [...prev, newPolygonData]);
       setCurrentPolygon([]);
-      setIsDrawing(false);
+
+      setLabel("");
       toast.success("Polygon completed");
     } else {
       toast.error("Need at least 3 points to complete a polygon");
@@ -98,41 +153,46 @@ export default function ImagePolygonAnnotator() {
   const clearPolygons = () => {
     setPolygons([]);
     setCurrentPolygon([]);
-    setIsDrawing(false);
+
     toast.success("Polygons cleared 🧼");
   };
 
   const clearCurrent = () => {
     setCurrentPolygon([]);
-    setIsDrawing(false);
+
     toast("Drawing cleared", { icon: "🗑️" });
   };
 
   const exportJSON = () => {
-    const data = {
-      polygons,
-      currentPolygon,
-    };
-    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    navigator.clipboard.writeText(
+      JSON.stringify({ polygons, currentPolygon }, null, 2)
+    );
     toast.success("JSON copied to clipboard");
+  };
+
+  const getPolygonCenter = (polygon: Point[]): Point => {
+    const total = polygon.reduce(
+      (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
+      { x: 0, y: 0 }
+    );
+    return {
+      x: total.x / polygon.length,
+      y: total.y / polygon.length,
+    };
   };
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     const image = imageRef.current;
-
     if (!canvas || !ctx || !image || !imageSrc) return;
 
     const draw = () => {
-      // Set canvas size to match image
       canvas.width = image.width;
       canvas.height = image.height;
-
-      // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw completed polygons from PolygonData
+      // Draw finalized polygons with 0.5 opacity
       polygons.forEach((polyData) => {
         const points = polyData.polygon;
         if (points.length > 0) {
@@ -140,15 +200,31 @@ export default function ImagePolygonAnnotator() {
           ctx.moveTo(points[0].x, points[0].y);
           points.forEach((point) => ctx.lineTo(point.x, point.y));
           ctx.closePath();
+
           ctx.strokeStyle = polyData.strokeColor;
           ctx.lineWidth = 2;
           ctx.stroke();
-          ctx.fillStyle = polyData.fillColor;
+
+          // Set fill color with 0.5 opacity
+          ctx.fillStyle = polyData.fillColor.replace(
+            /rgba\\((\\d+),\\s*(\\d+),\\s*(\\d+),\\s*[^)]+\\)/,
+            "rgba($1, $2, $3, 0.5)"
+          );
           ctx.fill();
+
+          // Draw label at center
+          if (polyData.label) {
+            const center = getPolygonCenter(points);
+            ctx.fillStyle = "black";
+            ctx.font = "16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(polyData.label, center.x, center.y);
+          }
         }
       });
 
-      // Draw current polygon
+      // Draw polygon in line mode
       if (currentPolygon.length > 0) {
         ctx.beginPath();
         ctx.moveTo(currentPolygon[0].x, currentPolygon[0].y);
@@ -157,7 +233,6 @@ export default function ImagePolygonAnnotator() {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Draw each vertex as a small circle
         currentPolygon.forEach((point) => {
           ctx.beginPath();
           ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
@@ -165,15 +240,28 @@ export default function ImagePolygonAnnotator() {
           ctx.fill();
         });
       }
+
+      // Draw drag preview with 0.25 opacity
+      if (dragShape && dragShape.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(dragShape[0].x, dragShape[0].y);
+        dragShape.forEach((point) => ctx.lineTo(point.x, point.y));
+        ctx.closePath();
+
+        ctx.strokeStyle = "#555";
+        ctx.lineWidth = 2;
+        ctx.fillStyle = "rgba(0, 0, 255, 0.25)";
+        ctx.fill();
+        ctx.stroke();
+      }
     };
 
     image.onload = draw;
     if (image.complete) draw();
-
     return () => {
       image.onload = null;
     };
-  }, [polygons, currentPolygon, imageSrc]);
+  }, [polygons, currentPolygon, dragShape, imageSrc]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-8 w-full">
@@ -185,7 +273,7 @@ export default function ImagePolygonAnnotator() {
 
         <div className="space-y-4">
           <div className="flex items-center gap-4">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="text-sm font-medium text-gray-700">
               Upload Image:
             </label>
             <input
@@ -196,6 +284,35 @@ export default function ImagePolygonAnnotator() {
             />
           </div>
 
+          <div className="flex gap-6 items-center bg-gray-50 p-4 rounded-lg border border-gray-300">
+            <div className="flex flex-col">
+              <label className="text-sm font-semibold text-gray-700 mb-1">
+                Mode
+              </label>
+              <select
+                value={drawingMode}
+                onChange={(e) => setDrawingMode(e.target.value as DrawingMode)}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-800 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                <option value="line">Line (Polygon)</option>
+                <option value="rectangle">Rectangle</option>
+                <option value="circle">Circle</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-sm font-semibold text-gray-700 mb-1">
+                Label
+              </label>
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Name your polygon"
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-800 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+          </div>
           <div className="relative flex justify-center items-center bg-gray-50 rounded-lg p-4 min-h-[400px]">
             {!imageSrc ? (
               <div className="text-gray-500 text-center">
@@ -212,7 +329,9 @@ export default function ImagePolygonAnnotator() {
                 />
                 <canvas
                   ref={canvasRef}
-                  onClick={handleCanvasClick}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
                   className="absolute top-0 left-0 w-full h-full cursor-crosshair"
                 />
               </div>
@@ -257,7 +376,11 @@ export default function ImagePolygonAnnotator() {
                 Current Data
               </h2>
               <pre className="text-sm text-gray-600 overflow-x-auto">
-                {JSON.stringify({ formattedPolygons, currentPolygon }, null, 2)}
+                {JSON.stringify(
+                  { polygons: formattedPolygons, currentPolygon },
+                  null,
+                  2
+                )}
               </pre>
             </div>
           )}
